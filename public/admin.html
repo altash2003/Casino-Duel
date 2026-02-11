@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADMIN PANEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#121216; --panel:#1e1e24; --accent:#feca57; --text:#fff; --danger:#ff4757; --ok:#2ecc71; --muted:#bbb; }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font-family:'Press Start 2P',cursive;padding:20px}
+    .card{width:min(720px,100%);background:var(--panel);border:4px solid #000;box-shadow:6px 6px 0 #000;border-radius:10px;overflow:hidden}
+    .hdr{padding:14px 16px;background:#000;border-bottom:4px solid #000;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .hdr h1{margin:0;font-size:14px;color:var(--accent)}
+    .content{padding:18px}
+    label{display:block;font-size:10px;color:#aaa;margin:12px 0 6px}
+    input, textarea{width:100%;padding:14px 12px;background:#000;border:2px solid #555;color:#fff;font-family:'Press Start 2P';font-size:12px;outline:none}
+    textarea{min-height:90px;resize:vertical}
+    input:focus, textarea:focus{border-color:var(--accent)}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .col{flex:1 1 240px}
+    .btn{width:100%;padding:14px 12px;border:2px solid #000;font-family:'Press Start 2P';cursor:pointer;font-size:12px;box-shadow:3px 3px 0 #000}
+    .btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+    .btn.primary{background:var(--accent);color:#000}
+    .btn.ok{background:var(--ok);color:#000}
+    .btn.danger{background:var(--danger);color:#000}
+    a{color:var(--accent);text-decoration:none;font-size:10px}
+    .msg{margin-top:12px;font-size:10px;line-height:1.5;color:var(--muted);min-height:18px}
+    .small{font-size:10px;color:var(--muted);line-height:1.6}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th,td{border:2px solid #000;padding:10px;font-size:10px;vertical-align:top}
+    th{background:#000;color:var(--accent)}
+    .tag{display:inline-block;padding:4px 6px;border:2px solid #000;background:#111;font-size:10px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="hdr">
+      <h1>ADMIN PANEL</h1>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <a href="/index.html">HOME</a>
+        <a href="#" id="logoutLink">LOGOUT</a>
+      </div>
+    </div>
+    <div class="content">
+      
+<p class="small">
+ADMIN PANEL (HOUSE).<br/>
+- Review TOPUP / WITHDRAW requests<br/>
+- View players list + balances<br/>
+- View system/player logs (audit)
+</p>
+
+<div class="row">
+  <button class="btn primary" id="tabRequests">REQUESTS</button>
+  <button class="btn" id="tabPlayers" style="background:#333;color:#fff;border-color:#000;">PLAYERS</button>
+  <button class="btn" id="tabLogs" style="background:#333;color:#fff;border-color:#000;">LOGS</button>
+</div>
+
+<div id="view"></div>
+
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    
+import { API, mustBeLoggedIn } from "/assets/client.js";
+mustBeLoggedIn();
+
+const msg = document.getElementById("msg");
+const view = document.getElementById("view");
+
+document.getElementById("logoutLink").onclick = () => { localStorage.removeItem("token"); window.location.href="/login.html"; };
+
+function statusTag(s) { return `<span class="tag">${(s||"").toUpperCase()}</span>`; }
+
+async function ensureAdmin() {
+  const me = await API.req("/api/me");
+  if (me.user.role !== "admin") {
+    msg.textContent = "Forbidden (admin only).";
+    throw new Error("Not admin");
+  }
+}
+
+async function getProof(id) {
+  const data = await API.req(`/api/admin/requests/topups/${id}/proof`);
+  return data.proof_base64;
+}
+
+function renderRequests(topRows, wRows) {
+  let html = "";
+  html += `<h3 style="margin:18px 0 8px;font-size:12px;color:var(--accent)">TOPUPS (pending)</h3>`;
+  if (!topRows.length) html += `<div class="small">No pending topups.</div>`;
+  else {
+    html += `<table><thead><tr><th>ID</th><th>USER</th><th>AMOUNT</th><th>SOURCE GAME</th><th>SENDER</th><th>REF</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>`;
+    for (const r of topRows) {
+      html += `<tr>
+        <td>#${r.id}</td><td>${r.username}</td><td>${r.amount} TC</td>
+        <td>${r.method || "-"}</td><td>${r.reference || "-"}</td><td>-</td>
+        <td>${statusTag(r.status)}</td>
+        <td style="min-width:280px">
+          <button class="btn ok" data-act="approveTopup" data-id="${r.id}" style="max-width:120px">APPROVE</button>
+          <button class="btn danger" data-act="rejectTopup" data-id="${r.id}" style="max-width:120px">REJECT</button>
+          <button class="btn" data-act="viewProof" data-id="${r.id}" style="background:#333;color:#fff;border-color:#000;max-width:140px;margin-top:8px;">VIEW PROOF</button>
+        </td>
+      </tr>`;
+    }
+    html += `</tbody></table><div id="proofBox"></div>`;
+  }
+
+  html += `<h3 style="margin:18px 0 8px;font-size:12px;color:var(--accent)">WITHDRAWS (pending)</h3>`;
+  if (!wRows.length) html += `<div class="small">No pending withdrawals.</div>`;
+  else {
+    html += `<table><thead><tr><th>ID</th><th>USER</th><th>AMOUNT</th><th>METHOD</th><th>DETAILS</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>`;
+    for (const r of wRows) {
+      let details = "";
+      try { details = JSON.stringify(JSON.parse(r.payout_details || "{}")); } catch { details = r.payout_details || ""; }
+      html += `<tr>
+        <td>#${r.id}</td><td>${r.username}</td><td>${r.amount} TC</td><td>${r.payout_method}</td>
+        <td style="max-width:260px;word-break:break-word">${details}</td>
+        <td>${statusTag(r.status)}</td>
+        <td style="min-width:260px">
+          <button class="btn ok" data-act="paidWithdraw" data-id="${r.id}" style="max-width:120px">MARK PAID</button>
+          <button class="btn danger" data-act="rejectWithdraw" data-id="${r.id}" style="max-width:120px">REJECT</button>
+        </td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+  return html;
+}
+
+function renderPlayers(rows) {
+  if (!rows.length) return `<div class="small">No players.</div>`;
+  let html = `<h3 style="margin:18px 0 8px;font-size:12px;color:var(--accent)">PLAYERS</h3>`;
+  html += `<table><thead><tr><th>ID</th><th>USERNAME</th><th>ROLE</th><th>BALANCE</th><th>CREATED</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    html += `<tr><td>${r.id}</td><td>${r.username}</td><td>${r.role}</td><td>${r.balance} TC</td><td>${r.created_at}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+function renderLogs(rows) {
+  if (!rows.length) return `<div class="small">No logs.</div>`;
+  let html = `<h3 style="margin:18px 0 8px;font-size:12px;color:var(--accent)">AUDIT LOGS (latest)</h3>`;
+  html += `<table><thead><tr><th>ID</th><th>ACTOR</th><th>ACTION</th><th>IP</th><th>TIME</th><th>META</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    let meta = r.meta || "";
+    if (meta.length > 220) meta = meta.slice(0, 220) + "...";
+    html += `<tr><td>${r.id}</td><td>${r.actor_username || "-"}</td><td>${r.action}</td><td style="max-width:160px;word-break:break-word">${r.ip || "-"}</td><td>${r.created_at}</td><td style="max-width:320px;word-break:break-word">${meta}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+async function loadRequests() {
+  msg.textContent = "Loading...";
+  await ensureAdmin();
+  const top = await API.req(`/api/admin/requests/topups?status=pending`);
+  const w = await API.req(`/api/admin/requests/withdrawals?status=pending`);
+  view.innerHTML = renderRequests(top.rows || [], w.rows || []);
+  msg.textContent = "";
+}
+
+async function loadPlayers() {
+  msg.textContent = "Loading...";
+  await ensureAdmin();
+  const p = await API.req(`/api/admin/players`);
+  view.innerHTML = renderPlayers(p.rows || []);
+  msg.textContent = "";
+}
+
+async function loadLogs() {
+  msg.textContent = "Loading...";
+  await ensureAdmin();
+  const l = await API.req(`/api/admin/logs?limit=300`);
+  view.innerHTML = renderLogs(l.rows || []);
+  msg.textContent = "";
+}
+
+document.getElementById("tabRequests").onclick = loadRequests;
+document.getElementById("tabPlayers").onclick = loadPlayers;
+document.getElementById("tabLogs").onclick = loadLogs;
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const act = btn.dataset.act;
+  const id = btn.dataset.id;
+  const note = prompt("Admin note (optional):") || "";
+
+  try {
+    if (act === "approveTopup") {
+      await API.req(`/api/admin/requests/topups/${id}/approve`, { method: "POST", body: JSON.stringify({ admin_note: note }) });
+      msg.textContent = `Topup #${id} approved`;
+      await loadRequests();
+    } else if (act === "rejectTopup") {
+      await API.req(`/api/admin/requests/topups/${id}/reject`, { method: "POST", body: JSON.stringify({ admin_note: note }) });
+      msg.textContent = `Topup #${id} rejected`;
+      await loadRequests();
+    } else if (act === "paidWithdraw") {
+      await API.req(`/api/admin/requests/withdrawals/${id}/paid`, { method: "POST", body: JSON.stringify({ admin_note: note }) });
+      msg.textContent = `Withdraw #${id} marked paid`;
+      await loadRequests();
+    } else if (act === "rejectWithdraw") {
+      await API.req(`/api/admin/requests/withdrawals/${id}/reject`, { method: "POST", body: JSON.stringify({ admin_note: note }) });
+      msg.textContent = `Withdraw #${id} rejected (refunded)`;
+      await loadRequests();
+    } else if (act === "viewProof") {
+      msg.textContent = "Loading proof...";
+      const p = await getProof(id);
+      const box = document.getElementById("proofBox");
+      if (box) box.innerHTML = `<div style="margin-top:12px" class="small">Proof for TOPUP #${id}:</div>
+        <img src="${p}" alt="proof" style="max-width:100%;border:4px solid #000;margin-top:8px" />`;
+      msg.textContent = "";
+    }
+  } catch (err) {
+    msg.textContent = err.message || "Action failed";
+  }
+});
+
+// default
+loadRequests().catch(()=>{});
+
+  </script>
+
+<script>
+  // NOTE: This only deters casual users. It cannot truly stop DevTools.
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('keydown', (e) => {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'f12') { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.ctrlKey && (k === 'u' || k === 's')) { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.ctrlKey && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) { e.preventDefault(); e.stopPropagation(); return; }
+  });
+</script>
+
+</body>
+</html>

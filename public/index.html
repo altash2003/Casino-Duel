@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CASINO DUEL ARENA - LIVE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #121216;
+            --bg-panel: #1e1e24;
+            --p1-color: #ff4757;
+            --p2-color: #2e86de;
+            --accent: #feca57;
+            --text: #ffffff;
+            --grid-line: rgba(255, 255, 255, 0.05);
+            --sidebar-width: 340px;
+        
+            --betting-height: 265px;
+            --players-height: 320px;
+}
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 20px 20px;
+            color: var(--text);
+            font-family: 'Press Start 2P', cursive;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden; /* STRICTLY NO BODY SCROLL */
+            display: flex;
+        }
+
+        /* --- HOVER SCROLLBARS --- */
+        .custom-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 0.3s; }
+        .custom-scroll:hover { scrollbar-color: #555 transparent; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; }
+        .custom-scroll:hover::-webkit-scrollbar-thumb { background-color: #555; }
+
+        /* --- MAIN LAYOUT --- */
+        .main-wrapper {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            gap: 20px;
+            overflow: hidden; /* Lock layout */
+            height: 100vh; /* Fixed viewport height */
+            min-height: 0;
+        }
+
+        /* GAME SECTION (LEFT) */
+        .game-section {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden; /* Prevent expansion */
+            min-width: 0; /* Flexbox fix */
+            flex: 1 1 auto;
+            min-height: 0; /* critical for nested scroll areas */
+        }
+
+        /* SIDEBAR (RIGHT) */
+        .social-sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: 100%;
+            overflow: hidden; /* Prevent sidebar expansion */
+            flex: 0 0 var(--sidebar-width);
+            min-height: 0; /* critical for nested scroll areas */
+        }
+
+        /* --- TOP BAR --- */
+        .top-bar {
+            width: 100%; display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px; border-bottom: 4px solid #333; padding-bottom: 15px;
+            flex-shrink: 0; /* Never shrink */
+        }
+        h1 { color: var(--accent); font-size: 20px; text-shadow: 3px 3px 0 #000; margin: 0; }
+        
+        .settings-group { display: flex; gap: 10px; align-items: center; }
+        select { background: #000; color: #fff; border: 2px solid #555; padding: 10px; font-family: 'Press Start 2P'; font-size: 10px; cursor: pointer; text-transform: uppercase; }
+        select:hover { border-color: var(--accent); }
+
+        .reset-btn { background: #ff4757; color: #fff; border: 2px solid #000; padding: 10px 15px; font-size: 10px; font-family: 'Press Start 2P'; cursor: pointer; box-shadow: 3px 3px 0 #000; }
+        .reset-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+
+        .target-display { background: #333; color: #aaa; padding: 10px; font-size: 10px; border: 2px solid #555; }
+
+        /* --- GAME TABS --- */
+        .game-selector { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; background: #000; padding: 10px; border: 2px solid #333; border-radius: 8px; flex-shrink: 0; }
+        .game-tab { background: #333; border: 2px solid #555; color: #aaa; padding: 10px 15px; font-size: 10px; font-family: 'Press Start 2P'; cursor: pointer; transition: all 0.2s; position: relative; top: 0; }
+        .game-tab:hover { background: #444; color: #fff; top: -2px; }
+        .game-tab.active { background: var(--accent); color: #000; border-color: #fff; box-shadow: 0 0 10px var(--accent); z-index: 2; }
+        .game-tab.disabled { opacity: 0.3; pointer-events: none; filter: grayscale(1); }
+
+        /* --- ARENA --- */
+        .arena-container { 
+            display: grid; 
+            grid-template-columns: 1fr 1.2fr 1fr; 
+            gap: 25px; 
+            align-items: stretch; 
+            flex-grow: 1; /* Fills remaining height */
+            min-height: 0; /* Allows children to scroll if needed */
+            padding: 10px;
+            overflow: hidden; /* lock grid height */
+        }
+
+        .player-hud { 
+            background: var(--bg-panel); border: 4px solid #000; display: flex; flex-direction: column; position: relative; 
+            box-shadow: 4px 4px 0 #000; transition: all 0.3s ease; height: 100%; z-index: 1;
+        }
+        .player-header { padding: 10px; text-align: center; border-bottom: 4px solid #000; position: relative; transition: background 0.3s; font-size: 12px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;}
+        
+        .p1-hud { border-color: #555; } .p1-hud .player-header { background: #333; color: #fff; }
+        .p1-hud.active-turn { border-color: var(--p1-color); box-shadow: 0 0 20px var(--p1-color); z-index: 10; transform: scale(1.02); }
+        .p1-hud.active-turn .player-header { background: var(--p1-color); }
+
+        .p2-hud { border-color: #555; } .p2-hud .player-header { background: #333; color: #fff; }
+        .p2-hud.active-turn { border-color: var(--p2-color); box-shadow: 0 0 20px var(--p2-color); z-index: 10; transform: scale(1.02); }
+        .p2-hud.active-turn .player-header { background: var(--p2-color); }
+
+        .score-area { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; min-height: 0; }
+        .score-display { font-size: 60px; font-family: 'Rajdhani', sans-serif; font-weight: 700; }
+        .match-point { font-size: 10px; color: var(--accent); margin-top: 5px; animation: blink 1s infinite; display: none; }
+        .score-pulse { animation: scorePulse 0.5s ease-out; }
+        @keyframes scorePulse { 0% { transform: scale(1); color: #fff; } 50% { transform: scale(1.5); color: var(--success); } 100% { transform: scale(1); color: #fff; } }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .controls-area { padding: 15px; flex-grow: 0; display: flex; flex-direction: column; gap: 10px; justify-content: center; min-height: 120px; background: rgba(0,0,0,0.2); flex-shrink: 0; }
+
+        .arcade-btn { position: relative; display: block; width: 100%; padding: 12px 5px; font-family: 'Press Start 2P'; font-size: 10px; text-transform: uppercase; border: none; cursor: pointer; background: none; margin-bottom: 5px; }
+        .arcade-btn::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #444; border: 3px solid #000; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.2), 4px 4px 0 #000; z-index: -1; transition: all 0.1s; }
+        .p1-btn::before { background: var(--p1-color); } .p2-btn::before { background: var(--p2-color); }
+        .arcade-btn:active::before { transform: translate(3px, 3px); box-shadow: inset 2px 2px 0 rgba(0,0,0,0.2), 1px 1px 0 #000; }
+        .arcade-btn:disabled { cursor: not-allowed; filter: grayscale(100%); opacity: 0.3; pointer-events: none; }
+
+        .seat-btn { width: 100%; padding: 20px; background: #333; color: #aaa; border: 2px dashed #666; font-family: 'Press Start 2P'; cursor: pointer; font-size: 10px; text-transform: uppercase; margin-top: auto; margin-bottom: auto; transition: all 0.2s; }
+        .seat-btn:hover { color: #fff; border-color: #fff; background: #444; transform: scale(1.05); }
+
+        .center-stage { background: #000; border: 4px solid #333; display: flex; flex-direction: column; position: relative; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); height: 100%; }
+        .round-tracker { background: #222; color: #fff; text-align: center; padding: 8px; font-size: 12px; border-bottom: 2px solid #444; letter-spacing: 2px; text-shadow: 2px 2px 0 #000; flex-shrink: 0;}
+        .round-tracker span { color: var(--accent); }
+        .marquee-status { background: #111; border-bottom: 2px solid #444; color: #888; text-align: center; padding: 10px; font-size: 10px; letter-spacing: 1px; min-height: 35px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;}
+        .game-board { flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 20px; position: relative; overflow: hidden; perspective: 1000px; min-height: 0;}
+        .vs-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 60px; font-weight: 900; color: rgba(255, 255, 255, 0.03); font-family: 'Rajdhani', sans-serif; pointer-events: none; z-index: 0; }
+
+        /* --- SIDEBAR PANELS (FIXED LAYOUT) --- */
+        .sidebar-panel {
+            background: var(--bg-panel);
+            border: 4px solid #000;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* allow inner scroll without resizing */
+            overflow: hidden;
+            box-shadow: 4px 4px 0 #000;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+        
+        .panel-header {
+            background: #2f3640; color: #fff; padding: 8px; text-align: left; padding-left: 15px; font-size: 10px;
+            border-bottom: 4px solid #000; text-transform: uppercase; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+        }
+
+        /* 1. BETTING (Fixed Height) */
+        .betting-panel { padding: 15px; border-bottom: 4px solid #000; background: #191919; }
+        .betting-overlay {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.85); z-index: 10;
+            display: flex; align-items: center; justify-content: center;
+            color: #aaa; font-size: 10px; text-align: center; padding: 20px;
+            font-family: 'Press Start 2P'; line-height: 1.5;
+        }
+        .betting-wrapper { position: relative; height: var(--betting-height); flex: 0 0 var(--betting-height); }
+        .wallet { text-align: center; color: var(--accent); margin-bottom: 10px; font-size: 10px; }
+        .bet-label { font-size: 8px; color: #666; margin-bottom: 5px; text-align: center; text-transform: uppercase; letter-spacing: 1px;}
+        .bet-controls { display: flex; gap: 5px; margin-bottom: 10px; }
+        .bet-btn { flex: 1; font-size: 8px; padding: 12px 5px; border: 2px solid #333; background: #222; color: #888; cursor: pointer; font-family: 'Press Start 2P'; transition: all 0.1s; }
+        .bet-btn:hover { border-color: #666; color: #fff; }
+        .bet-btn.selected { border-color: #fff; color: #000; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        .bet-btn.p1-btn.selected { background: var(--p1-color); }
+        .bet-btn.p2-btn.selected { background: var(--p2-color); }
+        .bet-input { width: 100%; background: #000; border: 2px solid #555; color: #fff; padding: 15px 10px; font-family: 'Press Start 2P'; font-size: 10px; text-align: center; margin-bottom: 5px; height: 45px; }
+        .place-bet-btn { width: 100%; background: #2ecc71; color: #000; border: 2px solid #000; padding: 12px; font-family: 'Press Start 2P'; cursor: pointer; font-size: 10px; margin-top: 5px; }
+        .place-bet-btn:disabled { background: #555; cursor: not-allowed; }
+
+        /* 2. PLAYER LIST (Fixed Height 35%) */
+        .player-list-container {
+            height: var(--players-height); /* Fixed height */
+            flex: 0 0 var(--players-height);
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .player-list { 
+            flex-grow: 1; padding: 0; background: #2f3640; 
+            overflow-y: auto; /* Internal scroll */
+            min-height: 0; 
+        }
+        .player-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 15px; border-bottom: 1px solid #222; 
+            font-size: 16px; color: #fff; background: #2f3640; 
+            font-family: 'Rajdhani', sans-serif; font-weight: 700;
+        }
+        .player-item:hover { background: #383f4d; }
+        .player-name { flex-grow: 1; }
+        .voice-icon { color: rgba(255,255,255,0.2); font-size: 14px; transition: all 0.1s; }
+        .voice-icon.speaking { color: #2ecc71; text-shadow: 0 0 5px #2ecc71; transform: scale(1.1); }
+        .mic-controls { padding: 10px; background: #222; border-top: 2px solid #000; display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: #aaa; flex-shrink: 0; }
+        .mic-btn { background: none; border: 2px solid #555; color: #aaa; padding: 6px 10px; cursor: pointer; font-family: 'Press Start 2P'; font-size: 8px; }
+        .mic-btn.active { border-color: #2ecc71; color: #2ecc71; }
+        .mic-btn:hover { border-color: #fff; color: #fff; }
+
+        /* 3. CHAT (Fills Remaining Space) */
+        .chat-container-box {
+            flex: 1 1 auto; /* Takes remaining vertical space, but never grows past sidebar */
+            min-height: 0; /* critical */
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 0; /* No bottom margin on last item */
+        }
+        .chat-inner { flex-grow: 1; display: flex; flex-direction: column; background: #1e1e24; min-height: 0; overflow: hidden; }
+        .chat-log { 
+            flex-grow: 1; padding: 15px; 
+            font-size: 14px; line-height: 1.5; color: #ccc; 
+            font-family: 'Rajdhani', sans-serif; font-weight: 600; 
+            overflow-y: auto; /* Internal scroll */
+        }
+        .chat-msg { margin-bottom: 8px; word-wrap: break-word; }
+        .chat-user { font-weight: 800; margin-right: 5px; }
+        .chat-text { color: #eee; }
+        .chat-input-area { display: flex; border-top: 4px solid #000; flex-shrink: 0; }
+        .chat-input { 
+            flex-grow: 1; background: #000; border: none; color: #fff; 
+            padding: 15px; font-family: 'Press Start 2P'; font-size: 12px; 
+            outline: none; height: 50px; 
+        }
+
+        /* --- GAME ASSETS --- */
+        .dice-row { display: flex; gap: 10px; z-index: 1; }
+        .die { width: 70px; height: 70px; background: #fff; border: 4px solid #000; border-radius: 8px; display: grid; grid-template-columns: repeat(3, 1fr); padding: 5px; box-shadow: 4px 4px 0 rgba(0,0,0,0.5); }
+        .dot { background: #000; width: 14px; height: 14px; border-radius: 50%; margin: auto; visibility: hidden; }
+        .die[v="1"] .dot:nth-child(5){visibility:visible} .die[v="2"] .dot:nth-child(1),.die[v="2"] .dot:nth-child(9){visibility:visible} .die[v="3"] .dot:nth-child(1),.die[v="3"] .dot:nth-child(5),.die[v="3"] .dot:nth-child(9){visibility:visible} .die[v="4"] .dot:nth-child(1),.die[v="4"] .dot:nth-child(3),.die[v="4"] .dot:nth-child(7),.die[v="4"] .dot:nth-child(9){visibility:visible} .die[v="5"] .dot:nth-child(1),.die[v="5"] .dot:nth-child(3),.die[v="5"] .dot:nth-child(5),.die[v="5"] .dot:nth-child(7),.die[v="5"] .dot:nth-child(9){visibility:visible} .die[v="6"] .dot:nth-child(1),.die[v="6"] .dot:nth-child(3),.die[v="6"] .dot:nth-child(4),.die[v="6"] .dot:nth-child(6),.die[v="6"] .dot:nth-child(7),.die[v="6"] .dot:nth-child(9){visibility:visible}
+        .shaking { animation: shake 0.5s infinite; }
+        @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 25% { transform: translate(-2px, -2px) rotate(2deg); } 50% { transform: translate(2px, 0px) rotate(-2deg); } 75% { transform: translate(-1px, 2px) rotate(1deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
+
+        .coin-container { perspective: 1000px; width: 140px; height: 140px; z-index: 1; }
+        .coin { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 2.5s cubic-bezier(0.1, 0, 0.2, 1); }
+        .coin-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 50px; font-weight: bold; box-shadow: 0 0 15px rgba(255,255,255,0.2); }
+        .coin-front { background: #feca57; color: #000; } .coin-back { background: #ff9f43; color: #000; transform: rotateY(180deg); }
+
+        .wheel-container { position: relative; z-index: 1; filter: drop-shadow(0 0 10px rgba(0,0,0,0.5)); }
+        .wheel { width: 200px; height: 200px; border-radius: 50%; background: conic-gradient(#d32f2f 0deg 60deg, #111 60deg 120deg, #d32f2f 120deg 180deg, #111 180deg 240deg, #d32f2f 240deg 300deg, #111 300deg 360deg); border: 6px solid #fff; transition: transform 3s cubic-bezier(0.1, 0.7, 0.1, 1); }
+        .wheel-marker { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 24px solid #f4b41b; z-index: 5; }
+
+        .rps-card { font-size: 60px; font-weight: bold; padding: 20px; background: #fff; border: 4px solid #000; border-radius: 10px; min-width: 140px; height: 140px; text-align: center; display: flex; align-items: center; justify-content: center; color: #000; font-family: 'Press Start 2P', 'Segoe UI Emoji', sans-serif; }
+        .rps-anim { animation: rpsShake 0.5s infinite; }
+        @keyframes rpsShake { 0% { transform: translateY(0); } 25% { transform: translateY(-15px) rotate(-5deg); } 50% { transform: translateY(0); } 75% { transform: translateY(-15px) rotate(5deg); } 100% { transform: translateY(0); } }
+
+        .ttt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; z-index: 1; background: #333; padding: 5px; border-radius: 5px; }
+        .ttt-cell { width: 60px; height: 60px; background: #222; display: flex; align-items: center; justify-content: center; font-size: 32px; cursor: pointer; color: #fff; border: 1px solid #444; }
+        .ttt-cell.filled { background: #333; } .ttt-cell:hover:not(.filled) { background: #444; }
+
+        .hl-card-wrap { width: 100px; height: 150px; position: relative; perspective: 1000px; z-index: 1; }
+        .hl-card-inner { position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.6s; transform-style: preserve-3d; }
+        .hl-card-front, .hl-card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 4px solid #fff; font-size: 40px; color: #000; }
+        .hl-card-front { background: #fff; border-color: #000; }
+        .hl-card-back { background: #c0392b; color: #f1c40f; transform: rotateY(180deg); display: flex; align-items: center; justify-content: center; font-size: 16px; text-align: center; font-family: 'Press Start 2P'; background-image: linear-gradient(45deg, #a93226 25%, transparent 25%, transparent 75%, #a93226 75%, #a93226), linear-gradient(45deg, #a93226 25%, transparent 25%, transparent 75%, #a93226 75%, #a93226); background-position: 0 0, 10px 10px; background-size: 20px 20px; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); text-shadow: 2px 2px 0 #000; }
+        .flipped .hl-card-inner { transform: rotateY(180deg); }
+        .hl-label { font-size: 10px; color: #666; position: absolute; top: 10px; width: 100%; text-align: center; }
+
+        @media (max-width: 950px) {
+            body { overflow: auto; height: auto; }
+            .main-wrapper { flex-direction: column; overflow: visible; }
+            .social-sidebar { width: 100%; min-width: auto; height: auto; }
+            .chat-container-box { height: 250px; flex-grow: 0; }
+            .arena-container { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
+            .center-stage { grid-column: 1 / -1; grid-row: 1; }
+            .p1-hud { grid-row: 2; } .p2-hud { grid-row: 2; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="main-wrapper">
+
+    <div class="game-section">
+        <div class="top-bar">
+            <h1>CASINO</h1>
+            <div class="settings-group">
+                <div class="target-display" id="targetDisplay">TARGET: 1</div>
+                <select id="roundMode" onchange="resetMatch()">
+                    <option value="1">1 Round (Sudden Death)</option>
+                    <option value="2">Best of 3 (First to 2)</option>
+                    <option value="3">Best of 5 (First to 3)</option>
+                    <option value="3_race">Race to 3</option>
+                    <option value="5_race">Race to 5</option>
+                </select>
+                <button onclick="resetMatch()" class="reset-btn">RESET</button>
+
+            <div class="settings-group" style="gap:8px;">
+                <button class="reset-btn" onclick="goTopup()" style="background:#2ecc71;">TOPUP</button>
+                <button class="reset-btn" onclick="goWithdraw()" style="background:#ff9f43;">WITHDRAW</button>
+                <button class="reset-btn" onclick="logout()" style="background:#576574;">LOGOUT</button>
+            </div>
+
+            </div>
+        </div>
+
+        <div class="game-selector">
+            <button onclick="setGame('dice')" class="game-tab active" id="tab-dice">DICE</button>
+            <button onclick="setGame('coin')" class="game-tab" id="tab-coin">COIN</button>
+            <button onclick="setGame('hl')" class="game-tab" id="tab-hl">HI-LO</button>
+            <button onclick="setGame('roulette')" class="game-tab" id="tab-roulette">ROULETTE</button>
+            <button onclick="setGame('rps')" class="game-tab" id="tab-rps">R.P.S.</button>
+            <button onclick="setGame('ttt')" class="game-tab" id="tab-ttt">TIC-TAC-TOE</button>
+        </div>
+
+        <div class="arena-container">
+            <div class="player-hud p1-hud" id="p1Panel">
+                <div class="player-header"><div id="p1Name">EMPTY</div></div>
+                <div class="score-area"><div class="score-display" id="p1Score">0</div><div class="match-point" id="p1MatchPoint">MATCH POINT</div></div>
+                <div class="controls-area" id="p1Controls">
+                    <button class="seat-btn" onclick="toggleSeat(1)">TAKE SEAT</button>
+                </div>
+            </div>
+
+            <div class="center-stage">
+                <div class="round-tracker" id="roundTracker">ROUND <span>1</span></div>
+                <div class="marquee-status" id="status">WAITING FOR PLAYERS...</div>
+                <div class="game-board" id="gameVisuals"><div class="vs-badge">VS</div></div>
+            </div>
+
+            <div class="player-hud p2-hud" id="p2Panel">
+                <div class="player-header"><div id="p2Name">EMPTY</div></div>
+                <div class="score-area"><div class="score-display" id="p2Score">0</div><div class="match-point" id="p2MatchPoint">MATCH POINT</div></div>
+                <div class="controls-area" id="p2Controls">
+                    <button class="seat-btn" onclick="toggleSeat(2)">TAKE SEAT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="social-sidebar">
+        
+        <div class="sidebar-panel betting-wrapper">
+            <div class="panel-header">SPECTATOR BETTING</div>
+            <div class="betting-panel">
+                <div class="wallet" id="walletDisplay">WALLET: 1000 TC</div>
+                
+                <div class="bet-label">STEP 1: CHOOSE FIGHTER</div>
+                <div class="bet-controls">
+                    <button class="bet-btn p1-btn" onclick="selectBet(1)" id="betP1Btn">BET P1</button>
+                    <button class="bet-btn p2-btn" onclick="selectBet(2)" id="betP2Btn">BET P2</button>
+                </div>
+                
+                <div class="bet-label" style="margin-top:10px;">STEP 2: WAGER</div>
+                <input type="number" id="betAmount" class="bet-input" placeholder="AMOUNT" min="10" max="1000">
+                
+                <button class="place-bet-btn" id="placeBetBtn" onclick="placeSpectatorBet()">PLACE BET</button>
+                <div id="betStatus" style="font-size:9px; text-align:center; color:#888; margin-top:5px;">No active bet</div>
+            </div>
+            <div class="betting-overlay" id="betOverlay">
+                WAITING FOR<br>2 PLAYERS...
+            </div>
+        </div>
+
+        <div class="sidebar-panel player-list-container">
+            <div class="panel-header">
+                PLAYERS ONLINE
+                <div style="font-size:8px; color:#aaa;" id="micStatusText">MIC OFF</div>
+            </div>
+            <div class="player-list custom-scroll" id="playerList">
+                <div class="player-item"><div class="player-name">You (Admin)</div><i class="fas fa-microphone voice-icon" id="myMic"></i></div>
+                <div class="player-item"><div class="player-name">Ysh</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">Clock</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">Nagi</div><i class="fas fa-microphone voice-icon speaking"></i></div>
+                <div class="player-item"><div class="player-name">Zeath</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">Liki</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">xijei</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">Brenty</div><i class="fas fa-microphone voice-icon"></i></div>
+                <div class="player-item"><div class="player-name">Koji</div><i class="fas fa-microphone voice-icon"></i></div>
+            </div>
+            
+            <div class="mic-controls">
+                <div id="micModeBtn" class="mic-btn" onclick="toggleMicMode()">MODE: PUSH-TO-TALK</div>
+                <div id="micActiveBtn" class="mic-btn" onmousedown="startTalk()" onmouseup="stopTalk()">HOLD SPACE</div>
+            </div>
+        </div>
+
+        <div class="sidebar-panel chat-container-box">
+            <div class="panel-header">LIVE CHAT</div>
+            <div class="chat-inner">
+                <div class="chat-log custom-scroll" id="chatLog">
+                    <div class="chat-msg"><span class="chat-user" style="color:#2ecc71">Ducky:</span> <span class="chat-text">so many trusted people</span></div>
+                    <div class="chat-msg"><span class="chat-user admin" style="color:#feca57">Matt:</span> <span class="chat-text">i didnt even add them lol</span></div>
+                    <div class="chat-msg"><span class="chat-user" style="color:#3498db">Lemon:</span> <span class="chat-text">krazy</span></div>
+                    <div class="chat-msg"><span class="chat-user" style="color:#9b59b6">Zeath:</span> <span class="chat-text">oh lol thats insane</span></div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" class="chat-input" placeholder="Type here..." onkeypress="handleChat(event)">
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    /* --- STATE --- */
+    const state = { 
+        game: null, turn: 1, p1Score: 0, p2Score: 0, targetScore: 1, 
+        tempData: {}, isGameOver: false, isBusy: false, coinRot: 0,
+        seats: { p1: false, p2: false } 
+    };
+    const spec = { money: 0, betOn: null, betAmount: 0, locked: false };
+    const voice = { mode: 'ptt', isTalking: false, stream: null, audioContext: null, analyser: null }; 
+
+    const DOM = {
+        p1Panel: document.getElementById('p1Panel'), p2Panel: document.getElementById('p2Panel'),
+        p1Ctrls: document.getElementById('p1Controls'), p2Ctrls: document.getElementById('p2Controls'),
+        p1Score: document.getElementById('p1Score'), p2Score: document.getElementById('p2Score'),
+        status: document.getElementById('status'), visuals: document.getElementById('gameVisuals'),
+        target: document.getElementById('targetDisplay'), round: document.getElementById('roundTracker'),
+        wallet: document.getElementById('walletDisplay'), betStatus: document.getElementById('betStatus'),
+        placeBtn: document.getElementById('placeBetBtn'), betInput: document.getElementById('betAmount'),
+        betOverlay: document.getElementById('betOverlay'),
+        p1Name: document.getElementById('p1Name'), p2Name: document.getElementById('p2Name'),
+        myMic: document.getElementById('myMic')
+    };
+    // ---- AUTH / API ----
+    const API = {
+        token: localStorage.getItem("token") || null,
+        user: null,
+        async req(path, opts = {}) {
+            const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+            if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
+            const res = await fetch(path, { ...opts, headers });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error || "Request failed");
+            return data;
+        },
+        async loadMe() {
+            if (!this.token) return null;
+            const { user } = await this.req("/api/me");
+            this.user = user;
+            return user;
+        },
+        async loadWallet() {
+            const { balance } = await this.req("/api/wallet");
+            return balance;
+        },
+        async syncWalletToUI() {
+            const bal = await this.loadWallet();
+            spec.money = bal;
+            DOM.wallet.innerText = `WALLET: ${spec.money} TC`;
+            return bal;
+        }
+    };
+
+    function logout() {
+        localStorage.removeItem("token");
+        window.location.href = "/login.html";
+    }
+    function goTopup(){ window.location.href="/topup.html"; }
+    function goWithdraw(){ window.location.href="/withdraw.html"; }
+
+    async function requireLogin() {
+        try {
+            if (!API.token) throw new Error("Missing token");
+            await API.loadMe();
+            await API.syncWalletToUI();
+        } catch (e) {
+            localStorage.removeItem("token");
+            window.location.href = "/login.html";
+        }
+    }
+
+
+    /* --- VOICE CHAT --- */
+    function toggleMicMode() {
+        if(voice.mode === 'ptt') {
+            voice.mode = 'open';
+            document.getElementById('micModeBtn').innerText = "MODE: OPEN MIC";
+            document.getElementById('micActiveBtn').style.display = 'none';
+            initAudio(); 
+        } else {
+            voice.mode = 'ptt';
+            document.getElementById('micModeBtn').innerText = "MODE: PUSH-TO-TALK";
+            document.getElementById('micActiveBtn').style.display = 'block';
+            stopAudio(); 
+        }
+    }
+
+    function startTalk() {
+        if(voice.mode !== 'ptt') return;
+        document.getElementById('micActiveBtn').classList.add('active');
+        initAudio();
+    }
+
+    function stopTalk() {
+        if(voice.mode !== 'ptt') return;
+        document.getElementById('micActiveBtn').classList.remove('active');
+        stopAudio();
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if(e.code === 'Space' && voice.mode === 'ptt' && document.activeElement.tagName !== 'INPUT') {
+            startTalk();
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if(e.code === 'Space' && voice.mode === 'ptt') {
+            stopTalk();
+        }
+    });
+
+    async function initAudio() {
+        try {
+            if(!voice.stream) {
+                voice.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                voice.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                voice.analyser = voice.audioContext.createAnalyser();
+                const source = voice.audioContext.createMediaStreamSource(voice.stream);
+                source.connect(voice.analyser);
+                voice.analyser.fftSize = 256;
+                visualizeMic();
+            }
+            voice.isTalking = true;
+            document.getElementById('micStatusText').innerText = "MIC ACTIVE";
+            document.getElementById('micStatusText').style.color = "#2ecc71";
+        } catch (e) {
+            console.error("Mic Error:", e);
+            alert("Microphone access denied or not found.");
+        }
+    }
+
+    function stopAudio() {
+        voice.isTalking = false;
+        DOM.myMic.classList.remove('speaking');
+        document.getElementById('micStatusText').innerText = "MIC OFF";
+        document.getElementById('micStatusText').style.color = "#aaa";
+    }
+
+    function visualizeMic() {
+        if(!voice.isTalking) return;
+        const dataArray = new Uint8Array(voice.analyser.frequencyBinCount);
+        
+        function draw() {
+            if(!voice.isTalking) return;
+            requestAnimationFrame(draw);
+            voice.analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+            const average = sum / dataArray.length;
+            
+            if(average > 10) DOM.myMic.classList.add('speaking');
+            else DOM.myMic.classList.remove('speaking');
+        }
+        draw();
+    }
+
+
+    /* --- SEATING & PRE-GAME --- */
+    function toggleSeat(player) {
+        if(state.isBusy) return;
+        
+        if(player === 1) {
+            state.seats.p1 = true;
+            DOM.p1Name.innerText = "PLAYER 1";
+            DOM.p1Ctrls.innerHTML = '<div style="font-size:10px; color:#666;">WAITING...</div>';
+        } else {
+            state.seats.p2 = true;
+            DOM.p2Name.innerText = "PLAYER 2";
+            DOM.p2Ctrls.innerHTML = '<div style="font-size:10px; color:#666;">WAITING...</div>';
+        }
+
+        checkReady();
+    }
+
+    function checkReady() {
+        if(state.seats.p1 && state.seats.p2) {
+            DOM.betOverlay.style.display = "none"; // Unlock betting
+            resetMatch(); // Start game
+        } else {
+            DOM.status.innerText = "WAITING FOR PLAYERS...";
+        }
+    }
+
+    /* --- SPECTATOR LOGIC --- */
+    function selectBet(player) {
+        if(spec.locked) return;
+        spec.betOn = player;
+        document.getElementById('betP1Btn').classList.toggle('selected', player===1);
+        document.getElementById('betP2Btn').classList.toggle('selected', player===2);
+    }
+
+        async function placeSpectatorBet() {
+        try {
+            const amt = parseInt(DOM.betInput.value);
+            if(!spec.betOn) { alert("Select a Player first!"); return; }
+            if(isNaN(amt) || amt <= 0) { alert("Invalid amount"); return; }
+
+            // server-side lock (subtract from wallet)
+            const resp = await API.req("/api/bet/lock", {
+                method: "POST",
+                body: JSON.stringify({ amount: amt })
+            });
+
+            spec.betAmount = amt;
+            spec.money = resp.balance;
+            spec.locked = true;
+
+            DOM.wallet.innerText = `WALLET: ${spec.money} TC`;
+            DOM.betStatus.innerText = `LOCKED: ${amt} TC on P${spec.betOn}`;
+            DOM.betStatus.style.color = spec.betOn===1 ? 'var(--p1-color)' : 'var(--p2-color)';
+
+            DOM.placeBtn.disabled = true;
+            DOM.betInput.disabled = true;
+            document.getElementById('betP1Btn').disabled = true;
+            document.getElementById('betP2Btn').disabled = true;
+        } catch (e) {
+            alert(e.message || "Could not place bet");
+        }
+    }
+
+        async function resolveSpectatorBet(winner) {
+        if(!spec.locked) return;
+
+        let msg = "";
+        try {
+            if(spec.betOn === winner) {
+                const winAmt = spec.betAmount * 2;
+
+                // server-side payout
+                const resp = await API.req("/api/bet/payout", {
+                    method: "POST",
+                    body: JSON.stringify({ amount: winAmt })
+                });
+
+                spec.money = resp.balance;
+                msg = `WON ${winAmt} TC!`;
+                DOM.betStatus.style.color = '#2ecc71';
+            } else {
+                // loss already deducted when bet was placed
+                msg = `LOST ${spec.betAmount} TC.`;
+                DOM.betStatus.style.color = '#ff4757';
+                // sync just in case
+                await API.syncWalletToUI();
+            }
+        } catch (e) {
+            msg = "BET RESOLVE ERROR (SYNCING WALLET)";
+            DOM.betStatus.style.color = '#ff4757';
+            try { await API.syncWalletToUI(); } catch {}
+        }
+
+        DOM.wallet.innerText = `WALLET: ${spec.money} TC`;
+        DOM.betStatus.innerText = msg;
+
+        setTimeout(() => {
+            spec.locked = false;
+            spec.betOn = null;
+            spec.betAmount = 0;
+            DOM.placeBtn.disabled = false;
+            DOM.betInput.disabled = false;
+            DOM.betInput.value = '';
+            document.getElementById('betP1Btn').disabled = false; document.getElementById('betP1Btn').classList.remove('selected');
+            document.getElementById('betP2Btn').disabled = false; document.getElementById('betP2Btn').classList.remove('selected');
+            DOM.betStatus.innerText = "Place bet for next match";
+            DOM.betStatus.style.color = "#888";
+        }, 3000);
+    }
+
+    /* --- CHAT LOGIC --- */
+    function handleChat(e) {
+        if(e.key === 'Enter') {
+            const txt = e.target.value;
+            if(txt.trim() === "") return;
+            const log = document.getElementById('chatLog');
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            div.innerHTML = `<span class="chat-user admin" style="color:#feca57">You:</span> <span class="chat-text">${txt}</span>`;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+            e.target.value = '';
+        }
+    }
+
+    /* --- GAME LOGIC --- */
+    function resetMatch() {
+        if(!state.seats.p1 || !state.seats.p2) return; 
+        state.p1Score = 0; state.p2Score = 0; state.turn = 1; state.isGameOver = false; state.isBusy = false; state.tempData = {}; state.coinRot = 0;
+        state.targetScore = parseInt(document.getElementById('roundMode').value); 
+        DOM.target.innerText = `TARGET: ${state.targetScore}`;
+        document.querySelectorAll('.game-tab').forEach(t => t.classList.remove('disabled'));
+        updateUI(); setGame(state.game || 'dice');
+    }
+
+    function setGame(type) {
+        if(state.isGameOver || state.isBusy) return;
+        if(!state.seats.p1 || !state.seats.p2) return;
+
+        state.game = type; state.tempData = {};
+        document.querySelectorAll('.game-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(`tab-${type}`).classList.add('active');
+        DOM.visuals.innerHTML = '<div class="vs-badge">VS</div>'; 
+        DOM.p1Ctrls.innerHTML = ''; DOM.p2Ctrls.innerHTML = '';
+
+        if(type === 'dice') setupDice();
+        if(type === 'coin') setupCoin();
+        if(type === 'hl') setupHighLow();
+        if(type === 'roulette') setupRoulette();
+        if(type === 'rps') setupRPS();
+        if(type === 'ttt') setupTTT();
+
+        updateStatus(`${type.toUpperCase()} STARTED. PLAYER 1'S TURN.`);
+        updateTurn(1);
+    }
+
+    function setBusy(busy) {
+        state.isBusy = busy;
+        const tabs = document.querySelectorAll('.game-tab');
+        tabs.forEach(t => { if(busy) t.classList.add('disabled'); else t.classList.remove('disabled'); });
+    }
+
+    function updateTurn(p) {
+        if(state.isGameOver) { toggleButtons(1, false); toggleButtons(2, false); return; }
+        state.turn = p;
+        if(state.game === 'hl') { const w = document.getElementById('hlWrap'); if(w) w.classList.remove('flipped'); }
+        if(p === 1) { DOM.p1Panel.classList.add('active-turn'); DOM.p2Panel.classList.remove('active-turn'); toggleButtons(1, true); toggleButtons(2, false); } 
+        else { DOM.p1Panel.classList.remove('active-turn'); DOM.p2Panel.classList.add('active-turn'); toggleButtons(1, false); toggleButtons(2, true); }
+    }
+
+    function toggleButtons(p, en) {
+        const c = p === 1 ? DOM.p1Ctrls : DOM.p2Ctrls; 
+        c.querySelectorAll('button').forEach(b => b.disabled = !en);
+    }
+
+    function awardPoint(p) {
+        if(state.isGameOver) return;
+        if(p === 1) state.p1Score++; else state.p2Score++;
+        updateUI(p);
+        setTimeout(checkMatchWin, 500);
+    }
+
+    function updateUI(winner) {
+        DOM.p1Score.innerText = state.p1Score; DOM.p2Score.innerText = state.p2Score;
+        DOM.round.innerHTML = `ROUND <span>${state.p1Score + state.p2Score + 1}</span>`;
+        document.getElementById('p1MatchPoint').style.display = (state.p1Score === state.targetScore - 1) ? 'block' : 'none';
+        document.getElementById('p2MatchPoint').style.display = (state.p2Score === state.targetScore - 1) ? 'block' : 'none';
+        if(winner) { const el = winner === 1 ? DOM.p1Score : DOM.p2Score; el.classList.add('score-pulse'); setTimeout(() => el.classList.remove('score-pulse'), 500); }
+    }
+
+    function updateStatus(msg) { DOM.status.innerText = msg; }
+
+    function checkMatchWin() {
+        if(state.p1Score >= state.targetScore) endGame(1);
+        else if(state.p2Score >= state.targetScore) endGame(2);
+    }
+
+    function endGame(winner) {
+        state.isGameOver = true;
+        setBusy(false);
+        resolveSpectatorBet(winner);
+        document.querySelectorAll('.game-tab').forEach(t => t.classList.remove('disabled'));
+        toggleButtons(1, false); toggleButtons(2, false);
+        DOM.p1Panel.classList.remove('active-turn'); DOM.p2Panel.classList.remove('active-turn');
+        DOM.round.innerHTML = "MATCH OVER"; 
+        DOM.visuals.innerHTML = `
+            <div style="text-align:center; z-index:10; background:#000; padding:20px;">
+                <div style="color:var(--accent); margin-bottom:10px;">MATCH COMPLETE!</div>
+                <h1 style="color:${winner===1?'var(--p1-color)':'var(--p2-color)'}; font-size:40px; margin-bottom:20px;">PLAYER ${winner}<br>WINS!</h1>
+                <button class="reset-btn" onclick="resetMatch()" style="font-size:16px; padding:15px; width:100%;">PLAY AGAIN</button>
+            </div>`;
+        updateStatus("WINNER DECLARED!");
+    }
+
+    function createBtn(p, txt, fn, fontSize) { 
+        const b = document.createElement('button'); b.className = `arcade-btn p${p}-btn`; b.innerText = txt; b.onclick = fn; 
+        if(fontSize) b.style.fontSize = fontSize;
+        if(p === 1) DOM.p1Ctrls.appendChild(b); else DOM.p2Ctrls.appendChild(b); 
+    }
+
+    /* --- GAME IMPLEMENTATIONS --- */
+    
+    // DICE
+    function setupDice() { createBtn(1,"ROLL",()=>runDice(1)); createBtn(2,"ROLL",()=>runDice(2)); DOM.visuals.innerHTML+=`<div style="display:flex; flex-direction:column; gap:30px; align-items:center;"><div id="p1Dice" class="dice-row" style="opacity:0.5"></div><div id="p2Dice" class="dice-row" style="opacity:0.5"></div></div>`; renderDice('p1Dice',[1,1,1]); renderDice('p2Dice',[1,1,1]); }
+    function renderDice(id,v){ const el=document.getElementById(id); el.innerHTML=''; v.forEach(x=>el.innerHTML+=`<div class="die" v="${x}"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`); }
+    function runDice(p) {
+        setBusy(true); toggleButtons(p, false); const r=[r6(),r6(),r6()], t=r.reduce((a,b)=>a+b,0); const row=document.getElementById(p===1?'p1Dice':'p2Dice'); row.childNodes.forEach(d=>d.classList.add('shaking'));
+        setTimeout(()=>{ row.childNodes.forEach(d=>d.classList.remove('shaking')); if(p===1) { state.tempData.p1Roll=t; renderDice('p1Dice',r); row.style.opacity=1; updateStatus(`P1 ROLLED ${t}. P2 TURN.`); setBusy(false); updateTurn(2); } else { state.tempData.p2Roll=t; renderDice('p2Dice',r); row.style.opacity=1; let p1=state.tempData.p1Roll; updateStatus(`P1: ${p1}  VS  P2: ${t}`); setTimeout(() => { if(p1>t){ updateStatus(`P1 WINS ROUND!`); awardPoint(1); } else if(t>p1){ updateStatus(`P2 WINS ROUND!`); awardPoint(2); } else updateStatus("DRAW! ROLL AGAIN."); setTimeout(()=>{ document.getElementById('p1Dice').style.opacity=0.5; document.getElementById('p2Dice').style.opacity=0.5; setBusy(false); updateTurn(1); }, 2000); }, 2000); } }, 600);
+    }
+    function r6(){return Math.ceil(Math.random()*6)}
+
+    // COIN
+    function setupCoin() { createBtn(1,"HEADS",()=>runCoin(1,'H')); createBtn(1,"TAILS",()=>runCoin(1,'T')); createBtn(2,"HEADS",()=>runCoin(2,'H')); createBtn(2,"TAILS",()=>runCoin(2,'T')); DOM.visuals.innerHTML = `<div class="coin-container"><div class="coin" id="coinEl"><div class="coin-face coin-front">H</div><div class="coin-face coin-back">T</div></div></div>`; state.coinRot = 0; }
+    function runCoin(p, call) {
+        setBusy(true); toggleButtons(p, false); const el = document.getElementById('coinEl'); const isHeads = Math.random() < 0.5; const res = isHeads ? 'H' : 'T'; let target = Math.ceil((state.coinRot + 1800) / 360) * 360; if(!isHeads) target += 180; state.coinRot = target; el.style.transform = `rotateY(${target}deg)`;
+        setTimeout(() => { if(call === res) { updateStatus(`P${p} CORRECT!`); awardPoint(p); } else updateStatus(`P${p} WRONG.`); setTimeout(() => { setBusy(false); updateTurn(p===1?2:1); }, 2000); }, 2500);
+    }
+
+    // HI-LO
+    function setupHighLow() { state.tempData.curr=r13(); createBtn(1,"HIGHER",()=>runHL(1,'high')); createBtn(1,"LOWER",()=>runHL(1,'low')); createBtn(2,"HIGHER",()=>runHL(2,'high')); createBtn(2,"LOWER",()=>runHL(2,'low')); drawHL(); }
+    function r13(){return Math.ceil(Math.random()*13)}
+    function cN(v){return v==11?'J':v==12?'Q':v==13?'K':v==1?'A':v}
+    function drawHL(){ const f=document.querySelector('.hl-card-front'); if(f)f.innerHTML=`<div class="hl-label">CURRENT</div>${cN(state.tempData.curr)}`; else DOM.visuals.innerHTML=`<div class="vs-badge">VS</div><div class="hl-card-wrap" id="hlWrap"><div class="hl-card-inner"><div class="hl-card-front"><div class="hl-label">CURRENT</div>${cN(state.tempData.curr)}</div><div class="hl-card-back">HI-LO</div></div></div>`; }
+    function runHL(p,g){
+        setBusy(true); toggleButtons(p, false); document.getElementById('hlWrap').classList.add('flipped');
+        setTimeout(()=>{ let next=r13(), curr=state.tempData.curr; while(next===curr)next=r13(); let win=(next>curr&&g=='high')||(next<curr&&g=='low'); state.tempData.curr=next; drawHL(); document.getElementById('hlWrap').classList.remove('flipped'); setTimeout(() => { if(win){ updateStatus(`P${p} CORRECT!`); awardPoint(p); } else updateStatus(`P${p} WRONG.`); setTimeout(() => { setBusy(false); updateTurn(p===1?2:1); }, 1500); }, 600); }, 600);
+    }
+
+    // ROULETTE
+    function setupRoulette(){ ['RED','BLACK'].forEach(c=>{ createBtn(1,c,()=>runR(1,c)); createBtn(2,c,()=>runR(2,c)); }); DOM.visuals.innerHTML+=`<div class="wheel-container"><div class="wheel-marker"></div><div class="wheel" id="wEl"></div></div>`; }
+    let wAng=0;
+    function runR(p,c){
+        setBusy(true); toggleButtons(p, false); wAng += 1080 + Math.random()*360; document.getElementById('wEl').style.transform=`rotate(${wAng}deg)`;
+        setTimeout(()=>{ let norm = (360 - (wAng%360)) % 360; let seg = Math.floor(norm / 60); let res = (seg % 2 === 0) ? 'RED' : 'BLACK'; if(c===res){ updateStatus(`P${p} WIN! LANDED ${res}.`); awardPoint(p); } else updateStatus(`P${p} LOST. LANDED ${res}.`); setTimeout(()=>{ setBusy(false); updateTurn(p===1?2:1); }, 2000); }, 3100);
+    }
+
+    // RPS
+    function setupRPS(){ const m = [{l:'R',v:'ROCK'}, {l:'P',v:'PAPER'}, {l:'S',v:'SCISSORS'}]; m.forEach(x => { createBtn(1, x.v, ()=>lkRPS(1, x.l), '12px'); createBtn(2, x.v, ()=>lkRPS(2, x.l), '12px'); }); DOM.visuals.innerHTML+=`<div style="display:flex; gap:30px;"><div id="p1R" class="rps-card">?</div><div id="p2R" class="rps-card">?</div></div>`; }
+    function lkRPS(p,c){ setBusy(true); toggleButtons(p, false); if(p===1){ state.tempData.p1=c; document.getElementById('p1R').innerText="LOCKED"; document.getElementById('p1R').style.fontSize="14px"; updateStatus("P1 LOCKED"); setTimeout(()=>{ setBusy(false); updateTurn(2); }, 1000); } else { state.tempData.p2=c; document.getElementById('p2R').innerText="LOCKED"; document.getElementById('p2R').style.fontSize="14px"; solveRPS(); } }
+    function solveRPS(){ const c1=document.getElementById('p1R'), c2=document.getElementById('p2R'); c1.classList.add('rps-anim'); c2.classList.add('rps-anim'); setTimeout(()=>{ c1.classList.remove('rps-anim'); c2.classList.remove('rps-anim'); let p1=state.tempData.p1, p2=state.tempData.p2; const map = { 'R':'✊', 'P':'✋', 'S':'✌️' }; c1.innerText=map[p1]; c1.style.fontSize="60px"; c2.innerText=map[p2]; c2.style.fontSize="60px"; let w=0; if(p1!=p2){ if((p1=='R'&&p2=='S')||(p1=='P'&&p2=='R')||(p1=='S'&&p2=='P')) w=1; else w=2; } setTimeout(() => { if(w){ updateStatus(`P${w} WINS`); awardPoint(w); } else updateStatus("DRAW"); setTimeout(()=>{ setBusy(false); updateTurn(1); }, 2000); }, 2000); }, 1500); }
+
+    // TTT
+    function setupTTT(){ state.tempData.bd=Array(9).fill(null); DOM.visuals.innerHTML+=`<div class="ttt-grid" id="tg"></div>`; rTTT(); updateStatus("P1 (X) START"); }
+    function rTTT(){ const g=document.getElementById('tg'); g.innerHTML=''; state.tempData.bd.forEach((c,i)=>{ let d=document.createElement('div'); d.className='ttt-cell '+(c?'filled':''); d.innerText=c||''; d.onclick=()=>cTTT(i); g.appendChild(d); }); }
+    function cTTT(i){ if(state.tempData.bd[i] || state.isBusy) return; setBusy(true); let s=state.turn===1?'X':'O'; state.tempData.bd[i]=s; rTTT(); if(kTTT(s)){ updateStatus(`P${state.turn} WINS ROUND!`); awardPoint(state.turn); setTimeout(()=>{ setBusy(false); setGame('ttt'); },1500); return; } if(!state.tempData.bd.includes(null)){ updateStatus("DRAW! RESETTING."); setTimeout(()=>{ setBusy(false); setGame('ttt'); },1500); return; } setBusy(false); updateTurn(state.turn===1?2:1); }
+    function kTTT(s){ const w=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]; return w.some(c=>state.tempData.bd[c[0]]==s&&state.tempData.bd[c[1]]==s&&state.tempData.bd[c[2]]==s); }
+
+    // Boot
+    requireLogin().then(() => {
+        // if admin, show Admin Panel button
+        try {
+            if (API.user && API.user.role === 'admin') {
+                const grp = document.querySelector('.settings-group');
+                if (grp && !document.getElementById('adminBtn')) {
+                    const b = document.createElement('button');
+                    b.id = 'adminBtn';
+                    b.className = 'reset-btn';
+                    b.textContent = 'ADMIN';
+                    b.style.background = '#54a0ff';
+                    b.onclick = () => (window.location.href = '/admin.html');
+                    grp.prepend(b);
+                }
+            }
+        } catch {}
+
+        // show username in the Players Online list label "You (Admin)" as your username
+        try {
+            const youRow = document.querySelector(".player-list .player-item .player-name");
+            if (youRow && API.user) youRow.textContent = `${API.user.username} (${API.user.role === 'admin' ? 'Admin' : 'You'})`;
+        } catch {}
+    });
+
+</script>
+
+<script>
+  // NOTE: This only deters casual users. It cannot truly stop DevTools.
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('keydown', (e) => {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'f12') { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.ctrlKey && (k === 'u' || k === 's')) { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.ctrlKey && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) { e.preventDefault(); e.stopPropagation(); return; }
+  });
+</script>
+
+</body>
+</html>
