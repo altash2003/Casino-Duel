@@ -884,5 +884,16 @@
   });
 </script>
 
+
+<script type="module">
+import { API, requireLogin } from "/assets/client.js";
+import { connectRealtime } from "/assets/realtime.js";
+let socket=null;
+requireLogin().then(async ()=>{
+  await API.req("/api/me");
+  socket = connectRealtime();
+  socket.on("state", (st)=> { window.__STATE__ = st; });
+});
+</script>
 </body>
 </html>

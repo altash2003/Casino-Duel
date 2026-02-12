@@ -7,11 +7,15 @@ import morgan from "morgan";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Database from "better-sqlite3";
+import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = createServer(app);
+const io = new SocketIOServer(server, { cors: { origin: true, credentials: true } });
 app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 3000;
@@ -86,6 +90,19 @@ CREATE TABLE IF NOT EXISTS withdraw_requests (
   FOREIGN KEY(user_id) REFERENCES users(id),
   FOREIGN KEY(reviewed_by) REFERENCES users(id)
 );
+
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  subject TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  admin_reply TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
 `);
 
 function jsonError(res, status, msg) {
@@ -149,6 +166,176 @@ function auditLog({ actor_user_id=null, actor_username=null, action, target_user
     );
   } catch {}
 }
+
+// ---- Realtime (socket.io) ----
+const ONLINE_USERS = new Map(); // userId -> { userId, username, role, socketIds:Set }
+const DUEL = {
+  roomId: "duel:lobby",
+  left: null,
+  right: null,
+  spectators: new Set(),
+  chat: [],
+  round: { id: 1, status: "waiting", hpLeft: 100, hpRight: 100, bets: { left: [], right: [] }, winner: null }
+};
+
+function pushChat(msg) { DUEL.chat.push(msg); if (DUEL.chat.length > 100) DUEL.chat.shift(); }
+function publicState() {
+  const online = Array.from(ONLINE_USERS.values()).map(u => ({ id: u.userId, username: u.username, role: u.role }));
+  return { online, duel: { left: DUEL.left, right: DUEL.right, spectators: Array.from(DUEL.spectators), round: {
+    id: DUEL.round.id, status: DUEL.round.status, hpLeft: DUEL.round.hpLeft, hpRight: DUEL.round.hpRight, winner: DUEL.round.winner,
+    betTotals: { left: DUEL.round.bets.left.reduce((a,b)=>a+b.amount,0), right: DUEL.round.bets.right.reduce((a,b)=>a+b.amount,0) }
+  } } };
+}
+function emitState() { io.to(DUEL.roomId).emit("state", publicState()); }
+
+function startRoundIfReady() {
+  if (DUEL.left && DUEL.right && DUEL.round.status === "waiting") {
+    DUEL.round.status = "live";
+    DUEL.round.hpLeft = 100; DUEL.round.hpRight = 100;
+    DUEL.round.bets = { left: [], right: [] };
+    DUEL.round.winner = null;
+    pushChat({ system: true, text: "Round started!", ts: Date.now() });
+    io.to(DUEL.roomId).emit("chat:init", DUEL.chat);
+    emitState();
+  }
+}
+function endRound(winnerSide) {
+  if (DUEL.round.status !== "live") return;
+  DUEL.round.status = "ended";
+  DUEL.round.winner = winnerSide;
+  emitState();
+
+  const winners = winnerSide === "left" ? DUEL.round.bets.left : DUEL.round.bets.right;
+  const losers = winnerSide === "left" ? DUEL.round.bets.right : DUEL.round.bets.left;
+
+  const payTx = db.transaction(() => {
+    for (const b of winners) {
+      const winAmt = b.amount * 2;
+      db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").run(winAmt, b.userId);
+      db.prepare("INSERT INTO transactions (user_id, type, amount, meta) VALUES (?, 'bet_payout', ?, ?)").run(
+        b.userId, winAmt, JSON.stringify({ round: DUEL.round.id, side: winnerSide })
+      );
+    }
+    for (const b of losers) {
+      db.prepare("INSERT INTO transactions (user_id, type, amount, meta) VALUES (?, 'bet_loss', ?, ?)").run(
+        b.userId, b.amount, JSON.stringify({ round: DUEL.round.id })
+      );
+    }
+  });
+  try { payTx(); } catch {}
+
+  pushChat({ system: true, text: `Round ended. Winner: ${winnerSide.toUpperCase()}`, ts: Date.now() });
+  io.to(DUEL.roomId).emit("chat:init", DUEL.chat);
+
+  setTimeout(() => {
+    DUEL.round.id += 1;
+    DUEL.round.status = "waiting";
+    DUEL.round.hpLeft = 100; DUEL.round.hpRight = 100;
+    DUEL.round.bets = { left: [], right: [] };
+    DUEL.round.winner = null;
+    emitState();
+    startRoundIfReady();
+  }, 2500);
+}
+
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace("Bearer ", "");
+    if (!token) return next(new Error("unauthorized"));
+    socket.user = verifyToken(token);
+    return next();
+  } catch { return next(new Error("unauthorized")); }
+});
+
+io.on("connection", (socket) => {
+  const { sub:userId, username, role } = socket.user;
+
+  let entry = ONLINE_USERS.get(userId);
+  if (!entry) entry = { userId, username, role, socketIds: new Set() };
+  entry.socketIds.add(socket.id);
+  ONLINE_USERS.set(userId, entry);
+
+  socket.join(DUEL.roomId);
+  DUEL.spectators.add(userId);
+
+  socket.emit("chat:init", DUEL.chat);
+  emitState();
+
+  socket.on("disconnect", () => {
+    const e = ONLINE_USERS.get(userId);
+    if (e) { e.socketIds.delete(socket.id); if (e.socketIds.size === 0) ONLINE_USERS.delete(userId); }
+    DUEL.spectators.delete(userId);
+    if (DUEL.left === userId) DUEL.left = null;
+    if (DUEL.right === userId) DUEL.right = null;
+    emitState();
+  });
+
+  socket.on("chat:send", (text) => {
+    const t = (text || "").toString().slice(0, 300).trim();
+    if (!t) return;
+    const msg = { userId, username, text: t, ts: Date.now() };
+    pushChat(msg);
+    io.to(DUEL.roomId).emit("chat:msg", msg);
+  });
+
+  socket.on("duel:seat", (side) => {
+    const s = (side || "").toString();
+    if (s === "leave") { if (DUEL.left===userId) DUEL.left=null; if (DUEL.right===userId) DUEL.right=null; emitState(); return; }
+    if (s === "left" && (!DUEL.left || DUEL.left===userId)) { DUEL.left=userId; if (DUEL.right===userId) DUEL.right=null; pushChat({system:true,text:`${username} took LEFT seat`,ts:Date.now()}); io.to(DUEL.roomId).emit("chat:init", DUEL.chat); emitState(); startRoundIfReady(); }
+    if (s === "right" && (!DUEL.right || DUEL.right===userId)) { DUEL.right=userId; if (DUEL.left===userId) DUEL.left=null; pushChat({system:true,text:`${username} took RIGHT seat`,ts:Date.now()}); io.to(DUEL.roomId).emit("chat:init", DUEL.chat); emitState(); startRoundIfReady(); }
+  });
+
+  socket.on("duel:attack", () => {
+    if (DUEL.round.status !== "live") return;
+    const isLeft = DUEL.left === userId;
+    const isRight = DUEL.right === userId;
+    if (!isLeft && !isRight) return;
+    const dmg = 5 + Math.floor(Math.random()*11);
+    if (isLeft) DUEL.round.hpRight = Math.max(0, DUEL.round.hpRight - dmg);
+    if (isRight) DUEL.round.hpLeft = Math.max(0, DUEL.round.hpLeft - dmg);
+    io.to(DUEL.roomId).emit("duel:hit", { by: isLeft ? "left":"right", dmg, hpLeft: DUEL.round.hpLeft, hpRight: DUEL.round.hpRight });
+    if (DUEL.round.hpLeft === 0) endRound("right");
+    if (DUEL.round.hpRight === 0) endRound("left");
+    emitState();
+  });
+
+  socket.on("bet:place", (payload) => {
+    if (DUEL.round.status !== "waiting") return;
+    const side = (payload?.side || "").toString();
+    const amt = Number(payload?.amount);
+    if (!["left","right"].includes(side)) return;
+    if (!Number.isInteger(amt) || amt <= 0) return;
+
+    const tx = db.transaction(() => {
+      const row = db.prepare("SELECT balance FROM users WHERE id = ?").get(userId);
+      if (!row) throw new Error("User not found");
+      if (amt > row.balance) throw new Error("Insufficient funds");
+      db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(amt, userId);
+      db.prepare("INSERT INTO transactions (user_id, type, amount, meta) VALUES (?, 'bet_lock', ?, ?)").run(
+        userId, amt, JSON.stringify({ round: DUEL.round.id, side })
+      );
+      return db.prepare("SELECT balance FROM users WHERE id = ?").get(userId).balance;
+    });
+
+    try {
+      const balance = tx();
+      DUEL.round.bets[side].push({ userId, amount: amt });
+      socket.emit("wallet:update", { balance });
+      emitState();
+    } catch (e) {
+      socket.emit("error:msg", e.message || "Bet failed");
+    }
+  });
+
+  // WebRTC voice signaling
+  socket.on("rtc:signal", (data) => {
+    const to = Number(data?.toUserId);
+    if (!to) return;
+    const target = ONLINE_USERS.get(to);
+    if (!target) return;
+    for (const sid of target.socketIds) io.to(sid).emit("rtc:signal", { fromUserId: userId, payload: data.payload });
+  });
+});
 
 // ---- Middleware ----
 app.use(helmet({ contentSecurityPolicy: false })); // CSP off for CDN fonts/icons in your mockup
@@ -429,6 +616,53 @@ app.get("/api/requests/mine", authRequired, (req, res) => {
 
   res.json({ ok: true, topups, withdrawals });
 });
+// ---- SUPPORT TICKETS ----
+app.post("/api/tickets", authRequired, (req, res) => {
+  const subject = (req.body?.subject || "").toString().trim().slice(0, 120);
+  const message = (req.body?.message || "").toString().trim().slice(0, 4000);
+  if (!subject || subject.length < 3) return jsonError(res, 400, "Subject too short");
+  if (!message || message.length < 5) return jsonError(res, 400, "Message too short");
+
+  const info = db.prepare("INSERT INTO support_tickets (user_id, subject, message, status) VALUES (?, ?, ?, 'open')")
+    .run(req.user.sub, subject, message);
+
+  auditLog({ actor_user_id: req.user.sub, actor_username: req.user.username, action: "ticket_create", target_user_id: req.user.sub, req, meta: { ticket_id: info.lastInsertRowid, subject } });
+  res.json({ ok: true, ticket_id: info.lastInsertRowid });
+});
+
+app.get("/api/tickets/mine", authRequired, (req, res) => {
+  const rows = db.prepare("SELECT id, subject, message, status, admin_reply, created_at, updated_at FROM support_tickets WHERE user_id=? ORDER BY id DESC LIMIT 50")
+    .all(req.user.sub);
+  res.json({ ok: true, rows });
+});
+
+app.get("/api/admin/tickets", authRequired, adminOnly, (req, res) => {
+  const status = (req.query.status || "open").toString();
+  const rows = db.prepare(`
+    SELECT t.id, t.subject, t.message, t.status, t.admin_reply, t.created_at, t.updated_at, u.username
+    FROM support_tickets t JOIN users u ON u.id=t.user_id
+    WHERE t.status=? ORDER BY t.id DESC LIMIT 200
+  `).all(status);
+  res.json({ ok: true, rows });
+});
+
+app.post("/api/admin/tickets/:id/reply", authRequired, adminOnly, (req, res) => {
+  const id = Number(req.params.id);
+  const reply = (req.body?.reply || "").toString().trim().slice(0, 4000);
+  const status = (req.body?.status || "pending").toString();
+  if (!Number.isInteger(id) || id <= 0) return jsonError(res, 400, "Invalid id");
+  if (!["open","pending","closed"].includes(status)) return jsonError(res, 400, "Invalid status");
+
+  const row = db.prepare("SELECT user_id FROM support_tickets WHERE id=?").get(id);
+  if (!row) return jsonError(res, 404, "Ticket not found");
+
+  db.prepare("UPDATE support_tickets SET admin_reply=?, status=?, updated_at=datetime('now') WHERE id=?")
+    .run(reply || null, status, id);
+
+  auditLog({ actor_user_id: req.user.sub, actor_username: req.user.username, action: "ticket_reply", target_user_id: row.user_id, req, meta: { ticket_id: id, status } });
+  res.json({ ok: true });
+});
+
 
 // ---- ADMIN: review requests ----
 app.get("/api/admin/requests/topups", authRequired, adminOnly, (req, res) => {
@@ -633,6 +867,5 @@ app.use(express.static(publicDir, { extensions: ["html"] }));
 // SPA-ish fallback for "/" (serve index.html)
 app.get("/", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
+server.listen(PORT, () => console.log('Server listening on', PORT));

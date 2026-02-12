@@ -55,6 +55,7 @@ ADMIN PANEL (HOUSE).<br/>
   <button class="btn primary" id="tabRequests">REQUESTS</button>
   <button class="btn" id="tabPlayers" style="background:#333;color:#fff;border-color:#000;">PLAYERS</button>
   <button class="btn" id="tabLogs" style="background:#333;color:#fff;border-color:#000;">LOGS</button>
+  <button class="btn" id="tabTickets" style="background:#333;color:#fff;border-color:#000;">TICKETS</button>
 </div>
 
 <div id="view"></div>
@@ -183,6 +184,7 @@ async function loadLogs() {
 document.getElementById("tabRequests").onclick = loadRequests;
 document.getElementById("tabPlayers").onclick = loadPlayers;
 document.getElementById("tabLogs").onclick = loadLogs;
+document.getElementById("tabTickets").onclick = loadTickets;
 
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-act]");
@@ -208,6 +210,18 @@ document.addEventListener("click", async (e) => {
       await API.req(`/api/admin/requests/withdrawals/${id}/reject`, { method: "POST", body: JSON.stringify({ admin_note: note }) });
       msg.textContent = `Withdraw #${id} rejected (refunded)`;
       await loadRequests();
+    
+    } else if (act === "replyTicket") {
+      const reply = prompt("Reply to ticket:") || "";
+      if (!reply.trim()) return;
+      await API.req(`/api/admin/tickets/${id}/reply`, { method:"POST", body: JSON.stringify({ reply, status:"pending" }) });
+      msg.textContent = `Ticket #${id} replied`;
+      await loadTickets();
+    } else if (act === "closeTicket") {
+      const note = prompt("Closing note (optional):") || "";
+      await API.req(`/api/admin/tickets/${id}/reply`, { method:"POST", body: JSON.stringify({ reply: note, status:"closed" }) });
+      msg.textContent = `Ticket #${id} closed`;
+      await loadTickets();
     } else if (act === "viewProof") {
       msg.textContent = "Loading proof...";
       const p = await getProof(id);
@@ -220,6 +234,28 @@ document.addEventListener("click", async (e) => {
     msg.textContent = err.message || "Action failed";
   }
 });
+
+
+async function loadTickets() {
+  msg.textContent = "Loading...";
+  await ensureAdmin();
+  const t = await API.req(`/api/admin/tickets?status=open`);
+  const rows = t.rows || [];
+  if (!rows.length) { view.innerHTML = `<div class="small">No open tickets.</div>`; msg.textContent=""; return; }
+  let html = `<h3 style="margin:18px 0 8px;font-size:12px;color:var(--accent)">OPEN TICKETS</h3>`;
+  html += `<table><thead><tr><th>ID</th><th>USER</th><th>SUBJECT</th><th>STATUS</th><th>MESSAGE</th><th>ACTIONS</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    html += `<tr><td>#${r.id}</td><td>${r.username}</td><td>${r.subject}</td><td>${statusTag(r.status)}</td>
+      <td style="max-width:320px;word-break:break-word">${r.message}</td>
+      <td style="min-width:240px">
+        <button class="btn ok" data-act="replyTicket" data-id="${r.id}" style="max-width:120px">REPLY</button>
+        <button class="btn danger" data-act="closeTicket" data-id="${r.id}" style="max-width:120px">CLOSE</button>
+      </td></tr>`;
+  }
+  html += `</tbody></table>`;
+  view.innerHTML = html;
+  msg.textContent = "";
+}
 
 // default
 loadRequests().catch(()=>{});

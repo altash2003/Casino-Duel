@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SUPPORT</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#121216; --panel:#1e1e24; --accent:#feca57; --text:#fff; --muted:#bbb; }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font-family:'Press Start 2P',cursive;padding:20px}
+    .card{width:min(820px,100%);background:var(--panel);border:4px solid #000;box-shadow:6px 6px 0 #000;border-radius:10px;overflow:hidden}
+    .hdr{padding:14px 16px;background:#000;border-bottom:4px solid #000;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .hdr h1{margin:0;font-size:14px;color:var(--accent)}
+    .content{padding:18px}
+    label{display:block;font-size:10px;color:#aaa;margin:12px 0 6px}
+    input, textarea{width:100%;padding:14px 12px;background:#000;border:2px solid #555;color:#fff;font-family:'Press Start 2P';font-size:12px;outline:none}
+    textarea{min-height:110px;resize:vertical}
+    .btn{width:100%;padding:14px 12px;border:2px solid #000;font-family:'Press Start 2P';cursor:pointer;font-size:12px;box-shadow:3px 3px 0 #000}
+    .btn.primary{background:var(--accent);color:#000}
+    .btn.alt{background:#333;color:#fff}
+    a{color:var(--accent);text-decoration:none;font-size:10px}
+    .msg{margin-top:12px;font-size:10px;line-height:1.5;color:var(--muted);min-height:18px}
+    .small{font-size:10px;color:var(--muted);line-height:1.6}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th,td{border:2px solid #000;padding:10px;font-size:10px;vertical-align:top}
+    th{background:#000;color:var(--accent)}
+    .tag{display:inline-block;padding:4px 6px;border:2px solid #000;background:#111;font-size:10px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="hdr">
+      <h1>SUPPORT TICKETS</h1>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <a href="/index.html">HOME</a>
+        <a href="#" id="logoutLink">LOGOUT</a>
+      </div>
+    </div>
+    <div class="content">
+      <p class="small">Create a ticket. Admin (house) can reply.</p>
+      <label>SUBJECT</label>
+      <input id="subject" placeholder="e.g. Topup pending" />
+      <label>MESSAGE</label>
+      <textarea id="message" placeholder="Explain your concern..."></textarea>
+      <div style="height:10px"></div>
+      <button class="btn primary" id="submitBtn">SUBMIT TICKET</button>
+      <div class="msg" id="msg"></div>
+      <div style="height:10px"></div>
+      <button class="btn alt" id="refreshBtn">REFRESH MY TICKETS</button>
+      <div id="tickets"></div>
+    </div>
+  </div>
+
+<script type="module">
+import { API, mustBeLoggedIn } from "/assets/client.js";
+mustBeLoggedIn();
+const $ = (id)=>document.getElementById(id);
+$("logoutLink").onclick = () => { localStorage.removeItem("token"); window.location.href="/login.html"; };
+function tag(s){ return `<span class="tag">${(s||"").toUpperCase()}</span>`; }
+
+$("submitBtn").onclick = async () => {
+  $("msg").textContent = "";
+  try{
+    const subject = $("subject").value.trim();
+    const message = $("message").value.trim();
+    const data = await API.req("/api/tickets",{method:"POST", body: JSON.stringify({subject, message})});
+    $("msg").textContent = `Ticket created: #${data.ticket_id}`;
+    $("subject").value=""; $("message").value="";
+    await loadMine();
+  }catch(e){ $("msg").textContent = e.message || "Failed"; }
+};
+
+async function loadMine(){
+  const data = await API.req("/api/tickets/mine");
+  const rows = data.rows || [];
+  if(!rows.length){ $("tickets").innerHTML = `<div class="small">No tickets yet.</div>`; return; }
+  let html = `<table><thead><tr><th>ID</th><th>SUBJECT</th><th>STATUS</th><th>MESSAGE</th><th>ADMIN REPLY</th></tr></thead><tbody>`;
+  for(const r of rows){
+    html += `<tr><td>#${r.id}</td><td>${r.subject}</td><td>${tag(r.status)}</td><td style="max-width:280px;word-break:break-word">${r.message}</td><td style="max-width:280px;word-break:break-word">${r.admin_reply || "-"}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  $("tickets").innerHTML = html;
+}
+$("refreshBtn").onclick = loadMine;
+loadMine();
+</script>
+</body>
+</html>
